@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A year and a half doing SIMD programming</title>
+    <link rel="stylesheet" href="styles.css">
+  
+    <!-- Include Highlight.js CSS theme -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
+    
+    <!-- Include Highlight.js JavaScript library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  
+    <!-- Optional: Load additional language support -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/go.min.js"></script>
+  
+    <!-- Initialize Highlight.js -->
+    <script>hljs.highlightAll();</script>
+</head>
+<body>
+
+    <header>
+        <h1>Nick Nuon's bag of tricks (title a WIP)</h1>
+        <nav>
+            <!-- Navigation links can be added here in the future -->
+        </nav>
+    </header>
+
+    <section>
+        <article>
+            
+            <h1>How to learn C++ SIMD programming in 30-ish days::What book publishers are afraid to tell you</h1>
+            <p>Before applying, Daniel sent me this via email:</p>
+            <blockquote>
+                “[I have to warn you], be mindful that I do very advanced programming. You will be challenged (massively) if you work with me. I am a nice person, but I don't do easy work. :-) You have to be ready to be confused and puzzled, and to work hard.”
+            </blockquote>
+            <p>According to Peter Norvig, it takes <a href="https://norvig.com/21-days.html">10 years to become a master programmer.</a></p>
+            <p>Well, I did not have 10 years.  I had never written a line of code with other people before, nor anything beyond 1400 LOC in high level langages but that was hardly a head start. I also did not know that the word 'register' could refer to something else than the cash register at the supermarket.</p>
+            <p>I had one month with respect to C++, a language which I knew little about while at the same time doing renovations. While there wasn’t a definite timetable for our C# projects, I felt it was in bad taste to spend one whole month learning C# on the university’s dime, so I watched a few YouTube videos and dove right in.</p>
+            <p>Thanksfully, I knew that my job would be almost exclusively about software performance so that narrowed things down quite a bit.This is not a perfect solution—it is arguably a montage—but this is how I did it:</p>
+        
+            <h2>Day 0</h2>
+            <p>C++ and C# are nearly 39 and 24 years old respectively: trying to learn everything would have been a fool’s errand. I had to understand what was happening under the hood and extrapolate from that on the fly.</p>
+            <p>From previous experience, I knew ChatGPT was good for things like syntax (“What’s the C++ intrinsic for a shift left by X bytes?”), features (“Does C# have equivalents to templates?”), so I decided to not focus too much on either or try to memorize them.</p>
+            <p>At first, I could not understand the papers nor the code, but I could tell that it did not use any multithreading, so I cut that from my training schedule. Template metaprogramming sounded really complicated, so I just hoped it wasn’t going to be on the test (good call: we used templates but only for simple uses).</p>
+            <p>I did not understand any of the terminology related to hardware, so I set out to understand how a computer works.</p>
+        
+            <h2>Week 1</h2>
+            <p>I chose to emulate the venerable NES 6502 CPU in C++ using a <a href="https://bugzmanov.github.io/nes_ebook/chapter_3.html">Rust tutorial</a>. I stopped when I had a few working instructions.</p>
+            <p><strong>Good call:</strong> The intuition behind the 6502 also translates, with some caveats, to modern ones. There are a lot more instructions, more CPU cores, more memory, and the software stack has ballooned, but modern hardware works pretty much the same way. Emulating the whole thing would probably have squandered precious time.</p>
+        
+            <h2>Week 2</h2>
+            <p>I then moved on to the <a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines">C++ core guidelines</a>. This was a good investment, but reading it cover to cover was a bit overkill. It was good to know what idiomatic C++ should look like, but in retrospect, I would probably have skimmed more and used it as a reference as needed (which turned out to be almost never).</p>
+            <p>C++ is an enormous language, and the guidelines try to be as comprehensive as possible. I would not use the majority of the features.</p>
+            <p>With Simdutf, I already had performant code as inspiration. Even if I wanted to, I would not have been able to stray very far from the rest of the codebase in the cases covered by the guidelines. In the cases where we needed to squeeze every last bit of performance with SIMD intrinsics, I had to be a little more creative.</p>
+        
+            <h2>Weeks 3 and 4</h2>
+            <p>Next on the reading list was <a href="https://www.agner.org/optimize/optimizing_cpp.pdf">Agner Fog’s book on C++ performance</a>. This turned out to be a great choice to understand what made a computer tick.</p>
+            <p>I wished it went more in-depth as to how compilers worked, as I often ended up working around their limitations.</p>
+            <p>It is no wonder that “trust the compiler” is common advice. They can be quite clever. However, a compiler can outperform humans in certain circumstances but struggle in others. For example, with bitwise operations, some compilers don’t recognize that NOT (NOT A) = A.<sup><a href="#footnote1">1</a></sup></p></p> It is more Rainman than John Von Neumann.</p>
+            <p>As such, it often helps the compiler if we’re really explicit. For a more ‘real-world’ example, unrolling is a relatively low-effort technique that is often worth trying.</p>
+            <p>Another example: my next task was to port Simdutf’s UTF8 validation function to C#. After a rather uneventful start writing the tests, benchmark, and scalar function, I got stuck trying to optimize this piece of code:</p>
+
+            <pre><code class="language-cpp">
+
+    public static class Vector256Extensions
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    
+        public static Vector256<byte> Prev1(this Vector256<byte> current, Vector256<byte> prev)
+        {
+    
+            Vector256<byte> shuffle = Avx2.Permute2x128(prev, current, 0x21);
+            return Avx2.AlignRight(current, shuffle, (byte)(16 - 1));
+        }
+    
+        public static Vector256<byte> Prev2(this Vector256<byte> current, Vector256<byte> prev)
+        {
+    
+            Vector256<byte> shuffle = Avx2.Permute2x128(prev, current, 0x21);
+            return Avx2.AlignRight(current, shuffle, (byte)(16 - 2));
+        }
+    
+        public static Vector256<byte> Prev3(this Vector256<byte> current, Vector256<byte> prev)
+        {
+    
+            Vector256<byte> shuffle = Avx2.Permute2x128(prev, current, 0x21);
+            return Avx2.AlignRight(current, shuffle, (byte)(16 - 3));
+        }
+        public static Vector256<byte> Lookup16(this Vector256<byte> source, Vector256<byte> lookupTable)
+        {
+            return Avx2.Shuffle(lookupTable, source);
+        }
+    
+    
+    
+        public static Vector256<byte> ShiftRightLogical4(this Vector256<byte> vector)
+        {
+            Vector256<ushort> extended = vector.AsUInt16();
+    
+            Vector256<ushort> shifted = Avx2.ShiftRightLogical(extended, 4);
+    
+            Vector256<byte> narrowed = shifted.AsByte();
+    
+            return narrowed;
+        }
+    }
+    
+    
+    namespace SimdUnicode
+    {
+    
+        public static unsafe class Utf8Utility
+        {
+            public static byte* GetPointerToFirstInvalidByte(byte* pInputBuffer, int inputLength)
+            {
+                int processedLength = 0;
+    
+                if (pInputBuffer == null || inputLength <= 0)
+                {
+                    return pInputBuffer;
+                }
+    
+                while (processedLength + 64 <= inputLength)
+                {
+    
+                    SIMDGetPointerToFirstInvalidByte(pInputBuffer, processedLength);
+    
+                    Utf8Validation.utf8_checker.CheckEof();
+                    if (Utf8Validation.utf8_checker.Errors())
+                    {
+                        return SimdUnicode.UTF8.RewindAndValidateWithErrors(pInputBuffer + processedLength, inputLength - processedLength);
+                    }
+                    processedLength += 64;
+    
+                }
+    
+    
+                if (processedLength < inputLength)
+                {
+                    byte* invalidBytePointer = SimdUnicode.UTF8.GetPointerToFirstInvalidByte(pInputBuffer + processedLength, inputLength - processedLength);
+                    if (invalidBytePointer != pInputBuffer + inputLength)
+                    {
+                        return invalidBytePointer;
+                    }
+                }
+    
+                return pInputBuffer + inputLength;
+    
+            }
+            public static byte* SIMDGetPointerToFirstInvalidByte(byte* pInputBuffer, int processedLength)
+            {
+                Vector256<byte> currentBlock = Avx.LoadVector256(pInputBuffer + processedLength);
+                Utf8Validation.utf8_checker.CheckNextInput(currentBlock);
+    
+                processedLength += 32;
+    
+                currentBlock = Avx.LoadVector256(pInputBuffer + processedLength);
+                Utf8Validation.utf8_checker.CheckNextInput(currentBlock);
+                processedLength += 32;
+    
+                return pInputBuffer + processedLength;
+            }
+    
+    
+    
+        }
+    
+        public struct Utf8Validation
+        {
+            public struct utf8_checker
+            {
+    
+    
+                static Vector256<byte> error = Vector256<byte>.Zero;
+                static Vector256<byte> prev_input_block = Vector256<byte>.Zero;
+                static Vector256<byte> prev_incomplete = Vector256<byte>.Zero;
+    
+                public utf8_checker()
+                {
+                    error = Vector256<byte>.Zero;
+                    prev_input_block = Vector256<byte>.Zero;
+                    prev_incomplete = Vector256<byte>.Zero;
+                }
+    
+    
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    
+                public static void CheckNextInput(Vector256<byte> input)
+                {
+    
+                    Vector256<sbyte> inputSBytes = input.AsSByte(); int mask = Avx2.MoveMask(inputSBytes.AsByte());
+                    if (mask != 0)
+                    {
+                        CheckUtf8Bytes(input);
+                        prev_incomplete = IsIncomplete(input);
+                    }
+    
+    
+    
+                    prev_input_block = input;
+    
+                }
+    
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    
+                public static void CheckUtf8Bytes(Vector256<byte> input)
+                {
+    
+                    Vector256<byte> prev1 = input.Prev1(prev_input_block);
+                    Vector256<byte> sc = CheckSpecialCases(input, prev1);
+                    error = Avx2.Or(error, CheckMultibyteLengths(input, prev_input_block, sc));
+                }
+    
+                public static bool Errors()
+                {
+    
+                    return !Avx2.TestZ(error, error);
+                }
+    
+                public static void CheckEof()
+                {
+    
+                    error = Avx2.Or(error, prev_incomplete);
+                }
+    
+                const byte TOO_SHORT = 1 << 0;
+                const byte TOO_LONG = 1 << 1;
+                const byte OVERLONG_3 = 1 << 2;
+                const byte SURROGATE = 1 << 4;
+                const byte OVERLONG_2 = 1 << 5;
+                const byte TWO_CONTS = 1 << 7;
+                const byte TOO_LARGE = 1 << 3;
+                const byte TOO_LARGE_1000 = 1 << 6;
+                const byte OVERLONG_4 = 1 << 6;
+                const byte CARRY = TOO_SHORT | TOO_LONG | TWO_CONTS;
+    
+    
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    
+                private static Vector256<byte> CheckSpecialCases(Vector256<byte> input, Vector256<byte> prev1)
+                {
+    
+                    Vector256<byte> shuf1 = Vector256.Create(TOO_LONG, TOO_LONG, TOO_LONG, TOO_LONG,
+                            TOO_LONG, TOO_LONG, TOO_LONG, TOO_LONG,
+                            TWO_CONTS, TWO_CONTS, TWO_CONTS, TWO_CONTS,
+                            TOO_SHORT | OVERLONG_2,
+                            TOO_SHORT,
+                            TOO_SHORT | OVERLONG_3 | SURROGATE,
+                            TOO_SHORT | TOO_LARGE | TOO_LARGE_1000 | OVERLONG_4,
+                            TOO_LONG, TOO_LONG, TOO_LONG, TOO_LONG,
+                            TOO_LONG, TOO_LONG, TOO_LONG, TOO_LONG,
+                            TWO_CONTS, TWO_CONTS, TWO_CONTS, TWO_CONTS,
+                            TOO_SHORT | OVERLONG_2,
+                            TOO_SHORT,
+                            TOO_SHORT | OVERLONG_3 | SURROGATE,
+                            TOO_SHORT | TOO_LARGE | TOO_LARGE_1000 | OVERLONG_4);
+    
+                    Vector256<byte> shuf2 = Vector256.Create(CARRY | OVERLONG_3 | OVERLONG_2 | OVERLONG_4,
+                            CARRY | OVERLONG_2,
+                            CARRY,
+                            CARRY,
+                            CARRY | TOO_LARGE,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000 | SURROGATE,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | OVERLONG_3 | OVERLONG_2 | OVERLONG_4,
+                            CARRY | OVERLONG_2,
+                            CARRY,
+                            CARRY,
+                            CARRY | TOO_LARGE,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000 | SURROGATE,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000,
+                            CARRY | TOO_LARGE | TOO_LARGE_1000);
+    
+                    Vector256<byte> shuf3 = Vector256.Create(TOO_SHORT, TOO_SHORT, TOO_SHORT, TOO_SHORT,
+                            TOO_SHORT, TOO_SHORT, TOO_SHORT, TOO_SHORT,
+                            TOO_LONG | OVERLONG_2 | TWO_CONTS | OVERLONG_3 | TOO_LARGE_1000 | OVERLONG_4,
+                            TOO_LONG | OVERLONG_2 | TWO_CONTS | OVERLONG_3 | TOO_LARGE,
+                            TOO_LONG | OVERLONG_2 | TWO_CONTS | SURROGATE | TOO_LARGE,
+                            TOO_LONG | OVERLONG_2 | TWO_CONTS | SURROGATE | TOO_LARGE,
+                            TOO_SHORT, TOO_SHORT, TOO_SHORT, TOO_SHORT, TOO_SHORT, TOO_SHORT, TOO_SHORT, TOO_SHORT,
+                            TOO_SHORT, TOO_SHORT, TOO_SHORT, TOO_SHORT,
+                            TOO_LONG | OVERLONG_2 | TWO_CONTS | OVERLONG_3 | TOO_LARGE_1000 | OVERLONG_4,
+                            TOO_LONG | OVERLONG_2 | TWO_CONTS | OVERLONG_3 | TOO_LARGE,
+                            TOO_LONG | OVERLONG_2 | TWO_CONTS | SURROGATE | TOO_LARGE,
+                            TOO_LONG | OVERLONG_2 | TWO_CONTS | SURROGATE | TOO_LARGE,
+                            TOO_SHORT, TOO_SHORT, TOO_SHORT, TOO_SHORT);
+                    Vector256<byte> byte_1_high = prev1.ShiftRightLogical4().Lookup16(shuf1);
+    
+                    Vector256<byte> byte_1_low = (prev1 & Vector256.Create((byte)0x0F)).Lookup16(shuf2);
+    
+                    Vector256<byte> byte_2_high = input.ShiftRightLogical4().Lookup16(shuf3);
+    
+                    return Avx2.And(Avx2.And(byte_1_high, byte_1_low), byte_2_high);
+                }
+    
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                private static Vector256<byte> CheckMultibyteLengths(Vector256<byte> input, Vector256<byte> prev_input, Vector256<byte> sc)
+                {
+                    Vector256<byte> prev2 = input.Prev2(prev_input);
+                    Vector256<byte> prev3 = input.Prev3(prev_input);
+    
+                    Vector256<byte> must23 = MustBe23Continuation(prev2, prev3);
+                    Vector256<byte> must23_80 = Avx2.And(must23, Vector256.Create((byte)0x80));
+    
+                    return Avx2.Xor(must23_80, sc);
+                }
+    
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                private static Vector256<byte> MustBe23Continuation(Vector256<byte> prev2, Vector256<byte> prev3)
+                {
+    
+                    Vector256<byte> is_third_byte = Avx2.SubtractSaturate(prev2, Vector256.Create((byte)(0b11100000u - 0x80)));
+                    Vector256<byte> is_fourth_byte = Avx2.SubtractSaturate(prev3, Vector256.Create((byte)(0b11110000u - 0x80)));
+    
+                    Vector256<byte> combined = Avx2.Or(is_third_byte, is_fourth_byte);
+                    return combined;
+                }
+    
+    
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    
+                private static Vector256<byte> IsIncomplete(Vector256<byte> input)
+                {
+                    Vector256<byte> maxValue = Vector256.Create(255, 255, 255, 255, 255, 255, 255, 255,
+                        255, 255, 255, 255, 255, 255, 255, 255,
+                        255, 255, 255, 255, 255, 255, 255, 255,
+                        255, 255, 255, 255, 255, 0b11110000 - 1, 0b11100000 - 1, 0b11000000 - 1);
+                    Vector256<byte> result = SaturatingSubtractUnsigned(input, maxValue);
+                    return result;
+                }
+    
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    
+                private static Vector256<byte> SaturatingSubtractUnsigned(Vector256<byte> left, Vector256<byte> right)
+                {
+                    if (!Avx2.IsSupported)
+                    {
+                        throw new PlatformNotSupportedException("AVX2 is not supported on this processor.");
+                    }
+    
+                    Vector256<ushort> leftUShorts = left.AsUInt16();
+                    Vector256<ushort> rightUShorts = right.AsUInt16();
+    
+                    Vector256<ushort> subtractionResult = Avx2.SubtractSaturate(leftUShorts, rightUShorts);
+    
+                    return subtractionResult.AsByte();
+                }
+        }
+    }
+        </code></pre>
+
+
+            <p>It’s basically a one-to-one port of the C++ code. It works, but it was slower than the runtime, and I could not figure out why.</p>
+            <p>Daniel came up with this <a href="https://github.com/simdutf/SimdUnicode/pull/13/files#diff-2441d7d0038aa052f725db50e78df8154b92f71854aba61e021394e85f24a2bb">solution</a></p>
+            <p>In a nutshell, in the original C++ code, there was no issue with taking small pieces of code and putting them into functions, e.g.,</p>
+        
+            <pre><code class="language-cpp">
+        public static Vector256&lt;byte&gt; Prev1(this Vector256&lt;byte&gt; current, Vector256&lt;byte&gt; prev)
+        {
+           Vector256&lt;byte&gt; shuffle = Avx2.Permute2x128(prev, current, 0x21);
+           return Avx2.AlignRight(current, shuffle, (byte)(16 - 1)); // shifts right by a certain amount
+        }
+            </code></pre>
+        
+            <p>But in this particular case, a bunch of helper functions in C# that appears only in one place in a very long function is not a zero-cost abstraction. The hints to agressively inline were ignored by the compiler and 
+                the solution was to manually inline everything.</p>
+            <p>There were only maybe a few times when I had to look at long pieces of assembly code; that’s when I was likely to feel stuck. I can’t help but wonder if knowing more about compiler design would have saved me some time in the long run, if only to better isolate which part of the assembly would have been more relevant.</p>
+        
+            <h2>Week 4</h2>
+            <p>This is the week where I tried to get hands-on practice: I <a href="https://www.youtube.com/watch?v=QghC6G8TyQ0">learned more about SIMD</a>, and wrote a program that did matrix dot multiplication. I then benchmarked it against a SIMD version of itself.</p>
+            <p>So that’s it in a nutshell. I wanted to do more, but I ended up learning on the job via the Intel Intrinsics Guide.</p>
+            <p>I make no claim that my path was optimal—it’s just how I did it, and it was enough to get started. In retrospect, I would have skimmed more overall, read more on simdutf itself, and included more readings on compiler design.</p>
+            
+                </article>
+
+
+        <hr>
+    <article>
+
+<section id="footnotes">
+  <p id="footnote1">
+    [1] See <a href="https://www.agner.org/optimize/optimizing_cpp.pdf">Agner Fog's book</a>, page 78 
+  </p>
+</section>
+</article>
+
+
+        
+    <footer>
+        <p>&copy; 2024 Nick Nuon</p>
+    </footer>
+
+</body>
+</html>

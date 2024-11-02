@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A year and a half doing SIMD programming</title>
+    <link rel="stylesheet" href="styles.css">
+  
+    <!-- Include Highlight.js CSS theme -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
+    
+    <!-- Include Highlight.js JavaScript library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  
+    <!-- Optional: Load additional language support -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/go.min.js"></script>
+  
+    <!-- Initialize Highlight.js -->
+    <script>hljs.highlightAll();</script>
+</head>
+<body>
+
+    <header>
+        <h1>Nick Nuon's bag of tricks (title a WIP)</h1>
+        <nav>
+            <!-- Navigation links can be added here in the future -->
+        </nav>
+    </header>
+
+    <section>
+        <article>
+            
+            <h1>Did Rust help me learn C++ in 30 days?</h1>
+            <p>The detail-oriented reader might notice that I chose a Rust tutorial over a C++ one. This might raise an eyebrow in some circles, especially given the one-month deadline.</p>
+        
+            <p>However, the idea of learning a programming language by learning another one is not as far-fetched as it sounds. Programming languages are not just formalities to order compilers around but also to communicate and to organize one’s own thoughts. Peter Norvig gives this advice in his article “Learn Programming in 10 years”:</p>
+        
+            <blockquote>
+                <p>“Learn at least a half dozen programming languages. Include one language that emphasizes class abstractions (like Java or C++), one that emphasizes functional abstraction (like Lisp or ML or Haskell), one that supports syntactic abstraction (like Lisp), one that supports declarative specifications (like Prolog or C++ templates), and one that emphasizes parallelism (like Clojure or Go).”</p>
+            </blockquote>
+        
+            <p>He quotes Alan Petris:</p>
+            <blockquote>
+                <p>"A language that doesn't affect the way you think about programming, is not worth knowing."</p>
+            </blockquote>
+        
+            <p>I could not hope to know every detail about C++ or C#, but I could learn from the wisdom of others (and in particular language designers). What sold me on Rust was that I had no experience doing manual memory management, and I just didn’t want to deal with things like heisenbugs. C++ is famous for its litany of footguns and I was hoping that some of those lessons learned would rub off on me. Ironically, the biggest landmine in this case wasn’t related to memory management.</p>
+        
+            <p>The algorithms didn’t make use of multithreading. I did still get buffer overflows and segfaults, but they weren’t the hardest thing to debug. I always knew at least the ballpark of the culprit because there were so few memory allocations. Typically, the main routine was buggy and it would overflow the memory allocated for the tests.</p>
+        
+            <p>Furthermore, a lot of what the borrow checker seems to do is enforcing the Modern C++ core guidelines. Now I’m sure there are differences, and I’m sure I would have gotten more mileage had I had more time, but a week was not enough exposure to really benefit from Rust.</p>
+        
+            <p>However, there is a language that helped me out through a particularly difficult debugging problem porting the UTF-8 validation algorithm. Technically, I didn’t really need Haskell.<sup><a href="#footnote1">1</a></sup> But it taught me that purity was a good ideal to shoot for.</p>
+        
+            <h2>Debugging and Spaghetti Code</h2>
+            <p>I’ll relate a time where I had written spaghetti code. In this instance, I had to explain code I had written over a Zoom call, which happened only once throughout my stay.</p>
+        
+            <p>I resume my adventures from the last article. Recap: I had ported the C++ code into C#, but my job was not quite done yet. The runtime function did not only validate UTF-8 units but also changed two extra values by reference.</p>
+        
+            <p>The first counted the number of 2-byte UTF-8 units, and the second counted the number of 3- and 4-byte UTF-8 units and then multiplied it by two.</p>
+        
+            <p>Whenever the algorithm backtracked in the case of an incomplete UTF-8 unit or an error, I had to make sure that it didn’t double-count UTF-8 units, which happened in half a dozen different places in the code.</p>
+        
+            <p>At first, I tried just putting <code>utfadjust += 1</code> naively where I thought it was appropriate. I persisted for a while, thinking it must be a +1 error. But in reality, there were about a half-dozen errors of this type:</p>
+        
+            <pre><code>// We need to take care of, e.g.:
+        // 11011110  10101101  11110000  10101101  10101111  10011111  11010111  10101000  11001101  10111001  11010100  10000111  11101111  10010000  10000000  11110011
+        // 10110100  10101100  10100111  11100100  10101011  10011111  11101111  10100010  10110010  11011100  10100000  00100010  *11110000*  10011001  10101011  10000011
+        // 10000000  10100010  11101110  10010101  10101001  11010100  10100111  11110000  10101001  10011101  10011011  11100100  10101011  10010111  11100110  10011001 <= Too long error @ 32 byte edge
+        // 10010000  11101111  10111111  10010110  11001010  10000000  11000111  10100010  11110010  10111100  10111011  10010100  11101001  10001011  10000110  11110100
+        // Without the following check, the 11110000 byte is erroneously double counted: the SIMD procedure counts it once, then it is counted again by the scalar function.
+        // Normally, if there is an error, this does not cause an issue: most erroneous UTF-8 units will not be counted.
+        // But it is in the case of 'too long' as, if you take for example (1111---- 10----- 10----- 10-----) 10-----,
+        // the part between parentheses will be counted as valid, and thus scalaradjust/utfadjust will be incremented once too much.</code></pre>
+        
+            <p>With only a single sum at the end of a test that told me little about the location of the miscounted bytes, I had no way to know if I had covered all possible edge cases. ‘Fixing’ one error would cause another.</p>
+        
+            <p>This was the only time working with Daniel where I had to get on a Zoom call to explain my code, as he couldn’t tell what I was doing. After convening with him, he sketched an <a href="https://github.com/simdutf/SimdUnicode/pull/25">alternative approach</a> that I decided to expand on. That approach was a little bit simpler, but my job was far from over: I still had to sniff out all possible edge cases.</p>
+        
+            <h2>The Functional Approach</h2>
+            <p>Now, for anyone who ever took an ‘intro to Java (or C++)’ class and wondered out loud how on earth could translating an imperative loop to a pure function be useful… this is the time.</p>
+        
+            <p>From there, I pretended every single loop and conditional was a function, and I followed <a href="http://sevangelatos.com/john-carmack-on/">John Carmack’s advice</a> on how to apply a functional paradigm to imperative code:</p>
+            <blockquote>
+                <p>“Survey some non-trivial functions in your codebase and track down every bit of external state they can reach, and all possible modifications they can make. This makes great documentation to stick in a comment block, even if you don’t do anything with it. If the function can trigger, say, a screen update through your render system, you can just throw your hands up in the air and declare the set of all effects beyond human understanding.</p>
+                <p>The next task you undertake, try from the beginning to think about it in terms of the real computation that is going on. Gather up your input, pass it to a pure function, then take the results and do something with it.</p>
+                <p>As you are debugging code, make yourself more aware of the part mutating state and hidden parameters play in obscuring what is going on.”</p>
+            </blockquote>
+        
+            <p>So instead of trying to write it all in one go, I (temporarily) threw all concerns for performance out the window and made a special point to separate the main routine (which was correct) from the extraneous code. I started treating the extra counting code as Haskell would treat side effects: like nuclear waste banished to a no man’s land that should easily be spotted. I used common sense rather than formal abstractions.</p>
+        
+            <p>I also started being really strict in documenting errors I encountered by writing tests for them. Each time I encountered an error, I would investigate and write a test for it so I could find errors quickly.</p>
+        
+            <p>The end result was this:</p>
+            <p><a href="https://github.com/simdutf/SimdUnicode/pull/26">https://github.com/simdutf/SimdUnicode/pull/26</a></p>
+        
+            <p>It was not particularly fast and later modifications would be needed to make it performant again, but the code became clean. This time, there was no need for an extra Zoom call, and it became much easier for Daniel to review. With extensive tests now in place, I was able to write the remaining implementations for SSE and AVX512 in a fraction of the time.</p>
+                </article>
+
+
+        <hr>
+    <article>
+
+        <section id="footnotes">
+            <p id="footnote1">
+              [1]  I once tried writing a minuscule Zork clone in Haskell over a period of maybe a month. I stopped because I felt that a minuscule zork clone that needed a tower of monads was probably over engineered.
+
+            </p>
+          </section>
+          </article>
+          
+
+        
+    <footer>
+        <p>&copy; 2024 Nick Nuon</p>
+    </footer>
+
+</body>
+</html>

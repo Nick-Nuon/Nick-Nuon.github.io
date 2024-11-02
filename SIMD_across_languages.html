@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A year and a half doing SIMD programming</title>
+    <link rel="stylesheet" href="styles.css">
+  
+    <!-- Include Highlight.js CSS theme -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
+    
+    <!-- Include Highlight.js JavaScript library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  
+    <!-- Optional: Load additional language support -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/go.min.js"></script>
+  
+    <!-- Initialize Highlight.js -->
+    <script>hljs.highlightAll();</script>
+</head>
+<body>
+
+    <header>
+        <h1>Nick Nuon's bag of tricks (title a WIP)</h1>
+        <nav>
+            <!-- Navigation links can be added here in the future -->
+        </nav>
+    </header>
+
+    <section>
+        <article>
+            <h2>Porting SIMD C++ code to C#
+            </h2>
+            <p>For this article, I will use the <a href="https://github.com/simdutf/simdutf">Simdbase64 codebase</a> as a source of examples. I highly recommend you read Daniel’s <a href="https://lemire.me/blog/2018/01/17/ridiculously-fast-base64-encoding-and-decoding/">blog post</a> on Base64 decoding and encoding.</p>
+            <p>The switch from C++ to C# is straightforward if you have a good grasp of SIMD programming already but there are a few differences which is the subject of this article. There are a lot of articles on the differences between the two langages already so I will focus on the SIMD part.</p>
+            
+            <h2></h2>
+            <p>In C#, there isn’t always a 1-1 mapping to intrinsics for some instructions. Although I mostly stuck close to the C++ code, there were a few times I had to ensure that certain instructions really used the intrinsics I had in mind. Thankfully, it was intuitive and a bit of trial and error, along with some elbow grease, helped resolve the issues.</p>
+            <p>C# encourages different methods for certain operations (e.g., <a href="https://github.com/dotnet/runtime/discussions/100829#discussioncomment-9062587">masking</a>), and SIMD code in C# is often easier to read compared to its C++ counterpart. </p>
+        
+            <h2>Comparing C++ and C# Code</h2>
+
+            We can take a particular function as an example:
+            <h3>C++ AVX2 Implementation</h3>
+            <pre><code class="language-cpp">
+        static inline void compress(__m128i data, uint16_t mask, char *output) {
+          if (mask == 0) {
+            _mm_storeu_si128(reinterpret_cast<__m128i *>(output), data);
+            return;
+          }
+          uint8_t mask1 = uint8_t(mask);  	
+          uint8_t mask2 = uint8_t(mask >> 8);
+        
+          __m128i shufmask = _mm_set_epi64x(tables::base64::thintable_epi8[mask2],
+                                            tables::base64::thintable_epi8[mask1]);
+          shufmask = _mm_add_epi8(shufmask, _mm_set_epi32(0x08080808, 0x08080808, 0, 0));
+          __m128i pruned = _mm_shuffle_epi8(data, shufmask);
+          int pop1 = tables::base64::BitsSetTable256mul2[mask1];
+        
+          __m128i compactmask = _mm_loadu_si128(reinterpret_cast<const __m128i *>(
+                                               tables::base64::pshufb_combine_table + pop1 * 8));
+          __m128i answer = _mm_shuffle_epi8(pruned, compactmask);
+        
+          _mm_storeu_si128(reinterpret_cast<__m128i *>(output), answer);
+        }
+            </code></pre>
+        
+            <h3>C# Implementation</h3>
+            <pre><code class="language-csharp">
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe void Compress(Vector128<byte> data, ushort mask, byte* output, byte* tablePtr) {
+            if (mask == 0) {
+                Sse2.Store(output, data);
+                return;
+            }
+        
+            byte mask1 = (byte)mask;      
+            byte mask2 = (byte)(mask >> 8);
+        
+            ulong value1 = Tables.GetThintableEpi8(mask1);
+            ulong value2 = Tables.GetThintableEpi8(mask2);
+        
+            Vector128<sbyte> shufmask = Vector128.Create(value2, value1).AsSByte();
+        
+            shufmask = Sse2.Add(shufmask, Vector128.Create(0x08080808, 0x08080808, 0, 0).AsSByte());
+        
+            Vector128<sbyte> pruned = Ssse3.Shuffle(data.AsSByte(), shufmask);
+            int pop1 = Tables.GetBitsSetTable256mul2(mask1);
+        
+            Vector128<byte> compactmask = Sse2.LoadVector128(tablePtr + pop1 * 8);
+        
+            Vector128<byte> answer = Ssse3.Shuffle(pruned.AsByte(), compactmask);
+            Sse2.Store(output, answer);
+        }
+            </code></pre>
+        
+            <p>The most obvious difference is the lack of shorthands in the C# code. In C++, <a href="https://github.com/dotnet/runtime/discussions/100829#discussioncomment-9074596">there is no function overloading</a>, so you end up with names like <code>_mm_shuffle_epi32</code> (where <code>_mm_</code> refers to SSE instructions, <code>shuffle</code> is the intrinsic, and <code>epi32</code> indicates how the input vector is treated... In this case, it is categorised as a vector of signed 32-bits units).</p>
+            <p>In C#, you don’t need such detailed shorthands. The type of the arguments usually dictates what intrinsic is used, making the code easier to read.</p>
+        
+            <h2>Challenges with AVX-512</h2>
+            <p>In these projects, one of the challenges in porting from AVX-512 to AVX-2 was finding ways to work around the fact that AVX-2 has fewer instructions than AVX-512. For example, the main difference between AVX-512 and AVX-2 is the introduction of masking and compress instructions in AVX-512.</p>
+
+            <p>In the AVX-2 code above, there is a scalar <code>ushort</code> variable <code>mask</code> that indicates which bytes to act on. In AVX-512, dedicated SIMD registers hold such masks. However, not all AVX-512 instructions are exposed in C#.</p>
+
+            <p>In AVX-512, the <code>compress</code> function and related code could be replaced by a single intrinsic: <code><a href="https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#text=_mm512_maskz_compress_epi8&ig_expand=1322">_mm512_maskz_compress_epi8</a></code>.</p>
+            <p>In particular, <code>_mm512_maskz_compress_epi8</code> was missing in .NET 9, so I adapted the AVX-2 code above <a href="https://github.com/simdutf/SimdBase64/pull/34">nearly verbatim</a> for AVX-512. This took more instructions and turned out to be slower than the AVX-2 implementation and the runtime by a significant margin.</p>
+            <p>In our case, this wasn’t a huge issue: our AVX-2 implementation was already faster than the runtime, and the missing instructions should be exposed in the next version of .NET, so we’re heading for a happy ending.</p>
+        
+        <hr>
+    <article>
+
+
+
+        
+    <footer>
+        <p>&copy; 2024 Nick Nuon</p>
+    </footer>
+
+</body>
+</html>

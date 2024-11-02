@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A year and a half doing SIMD programming</title>
+    <link rel="stylesheet" href="styles.css">
+  
+    <!-- Include Highlight.js CSS theme -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
+    
+    <!-- Include Highlight.js JavaScript library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  
+    <!-- Optional: Load additional language support -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/go.min.js"></script>
+  
+    <!-- Initialize Highlight.js -->
+    <script>hljs.highlightAll();</script>
+</head>
+<body>
+
+    <header>
+        <h1>Nick Nuon's bag of tricks (title a WIP)</h1>
+        <nav>
+            <!-- Navigation links can be added here in the future -->
+        </nav>
+    </header>
+
+    <section>
+        <article>
+            <h1>Lookup Tables & Time Management</h1>
+            <p>My next task was to implement the Latin1 ⇔ UTFX conversion.</p>
+            <p>Latin1 → UTF32/UTF16/UTF8 were the simpler conversions.</p>
+            <p>The converse, in particular, UTF8 → Latin1 (which is the subject of this article), turned out to be a tad more complicated.</p>
+            <p>Vectorized operations are all well and good, but it can sometimes feel a bit constricted: what happens if you need to be a little more surgical, e.g., an UTF8 element straddles two vectors? Or in the case of UTF8 → Latin1, if you want to check that a two-byte UTF8 character fits into the Latin1 range?</p>
+            <p>It becomes a bit like trying to pick up a pebble with a shovel. It’s a hassle. Now, this is where lookup tables can be useful.</p>
+            <p>To make a very long story short: the existing AVX2/SSE routines that transcribed between different UTF encodings used bit shifts to check against previous bytes and less-than/greater-than operations to mask certain properties (such as the presence of continuation bytes), after which the various outputs were checked against pre-computed lookup tables.</p>
+            <p>I have to admit that I spent the middle of July being stuck: I had first tried to make new lookup tables specifically for Latin1 and I got stuck debugging them. After a while, I conferred with Daniel about my lack of progress.</p>
+            <p>He suggested taking the existing UTF8 → UTF16 tables and treating Latin1 as a special case of UTF16. He acknowledged that even though the table for UTF16 was indeed bigger and not a 100% fit for the problem, redesigning them would take more development time and it was likely not worth it. After polishing and testing another of his sketches, we ended up with something like this for the SSE routine:</p>
+            <p><a href="https://github.com/simdutf/simdutf/pull/263">GitHub Pull Request #263</a></p>
+            <p>It would need further minor fixes, but the results turned out not to be too shabby. It might not be the perfect solution, but it beat the baseline set by ICU and iconv.</p>
+            <p><strong>Morale of the story:</strong> Reuse whatever you have on hand if it’s good enough. Do the simplest possible thing first. Also, creating lookup tables from scratch is a pain.</p>
+        
+            <h2>Writing Across Different Architectures</h2>
+            <p>One difficulty with SIMD is that it is harder to write code across different architectures and setups: I wrote code for SSE, AVX2, and AVX-512 for each project.</p>
+            <p>A fast routine in AVX-512 might become sluggish in older architectures and vice versa.</p>
+            <p>In the case of lookup tables, the bigger the registers, the more values you can put in and the less back-and-forth you need to get to. This comes back to my point that there are always tradeoffs when doing performance optimization.</p>
+            <p>While there was a lot of overlap between each, the latter instruction sets contain more specialized and numerous instructions. Some ingenuity is typically necessary to replicate missing instructions in older architectures (or vice versa: taking account of newer, more performant ones).</p>
+            <p>SSE and AVX2 are relatively similar and, for the most part, differ mostly by the size of their vectors. But AVX-512 is a different beast.</p>
+            <p>To illustrate, my next task was to incorporate these blog posts into <a href="https://github.com/simdutf/simdutf">simdutf</a>:</p>
+            <ul>
+                <li><a href="https://lemire.me/blog/2023/08/18/transcoding-latin-1-strings-to-utf-8-strings-at-12-gb-s-using-avx-512/">Transcoding Latin-1 Strings to UTF-8 Strings at 12 GB/s Using AVX-512</a></li>
+                <li><a href="https://lemire.me/blog/2023/08/12/transcoding-utf-8-strings-to-latin-1-strings-at-12-gb-s-using-avx-512/">Transcoding UTF-8 Strings to Latin-1 Strings at 12 GB/s Using AVX-512</a></li>
+            </ul>
+            <p>And this respectively:</p>
+            <ul>
+                <li><a href="https://github.com/simdutf/simdutf/pull/270">GitHub Pull Request #270</a></li>
+                <li><a href="https://github.com/simdutf/simdutf/pull/272">GitHub Pull Request #272</a></li>
+            </ul>
+            <p>As you can see, we use completely different routines.</p>
+            <p>Indeed, while newer SIMD instructions operate on more values, they are also heavier. It turned out that using the same AVX2 tables modified for AVX-512 did not turn out to be quite as efficient.</p>
+            <p>The saving grace and the most notable feature of AVX-512 is the introduction of masking and compress instructions, which aren’t present in either SSE or AVX2. Finding ways to dance around missing AVX-512 instructions will prove to be a recurring point later on.</p>                </article>
+
+
+        <hr>
+    <article>
+
+
+
+        
+    <footer>
+        <p>&copy; 2024 Nick Nuon</p>
+    </footer>
+
+</body>
+</html>

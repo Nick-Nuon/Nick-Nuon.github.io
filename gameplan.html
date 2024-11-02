@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A year and a half doing SIMD programming</title>
+    <link rel="stylesheet" href="styles.css">
+  
+    <!-- Include Highlight.js CSS theme -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
+    
+    <!-- Include Highlight.js JavaScript library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  
+    <!-- Optional: Load additional language support -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/go.min.js"></script>
+  
+    <!-- Initialize Highlight.js -->
+    <script>hljs.highlightAll();</script>
+</head>
+<body>
+
+    <header>
+        <h1>Nick Nuon's bag of tricks (title a WIP)</h1>
+        <nav>
+            <!-- Navigation links can be added here in the future -->
+        </nav>
+    </header>
+
+    <section>
+        <article>
+            
+            <h1>How to write open source SIMD code used by millions of people: a gameplan</h1>
+            <p>The overall strategy was fairly simple and the same for all the projects I contributed to:</p>
+            <ol>
+                <li>See where you can make improvements and see if you have a winning algorithm already.</li>
+                <li>Get familiar with the project/Read code.</li>
+                <li>Write scalar functions.</li>
+                <li>Write a <em>lot</em> of tests (and update as needed).</li>
+                <li>Write benchmarks.</li>
+                <li>Write SIMD code.</li>
+            </ol>
+            <p>I think most of it is self-explanatory but would still like to add a couple of details:</p>
+        
+            <h2>Step #0: See Where You Can Make Improvements</h2>
+            <p>I term it step zero because I had little to do with it myself, but the idea is to find something where we can make improvements and if there’s already an algorithm we can leverage. Daniel suggested them to me, and I thought they were really cool projects.</p>
+            <p>It can be a very old library. In the case of our Latin1 ⇔ UTFX transcoding, the most popular libraries were ICU and iconv, both of which didn’t use scalar instructions.<sup><a href="#footnote1">1</a></sup></p></p> </p>
+            <p>But it can also be something that is already SIMD-accelerated, as was the case with our C# projects. There wasn’t a direct equivalent to Latin1 ⇔ UTFX transcoding, but a lot of the code from the UTF8 ⇔ UTF16 part of Simdutf could be adapted to fit the new project.</p>
+            <p>The algorithms used in SimdUnicode and SimdBase64 already had a pretty direct C++ implementation. They had already been successful when implemented in other languages. This still wasn’t easy, but it made things significantly easier. These algorithms were developed over several years by multiple people.</p>
+            <p>We didn’t know at the beginning if these projects were going to work. In particular, the .NET Runtime already made pretty heavy use of SIMD instructions, but we knew it was well worth a try. The next step after that would be:</p>
+        
+            <h2>Step #1: Reading Other People’s Code</h2>
+            <p>I was mostly a hobbyist programmer prior to starting this, and it was the first time I dealt with large, mature codebases used in production. As a warm-up, Daniel asked me to see if I could improve the command line utility of the ada project. I ended up <a href="https://github.com/ada-url/ada/pull/383">adding the ability to pipe files to it </a>, which is simple compared to what was to come, but my way of going about it did not sensibly change.</p>
+            <p>The first step is to ascertain the objective and get a general feel for the codebase—it takes too long to read a large codebase from start to finish. I had more latitude with simdutf as it was internal to our team, but with the C# projects, I had to make sure our functions could be used as drop-in replacements for existing ones in the Runtime. It had to be as conventional C# as possible.</p>
+            <p>The second step is to determine a point of entry: latch on to the one function that seems closest to the desired functionality and trace the program's flow from there.</p>
+            <p>The rest involves an ad hoc mixture of reading documentation, asking others, Googling, using Visual Studio Code’s search function, reading code, making guesses, reading past GitHub discussions, and applying general programming knowledge. In Visual Studio Code, right-clicking and selecting “Go to definition” is very helpful. However, in C++, this feature does not work if you hit a macro, so a debugger can be useful for tracing the program flow.</p>
+
+            <h2>Step #2: Writing Scalar Version</h2>
+
+            <p>This is to provide a sanity check: it is much easier to reason about and debug a scalar function. </p>
+        
+            <h2>Step #3: Writing Tests</h2>
+            <p>For all SIMD projects, I wrote:</p>
+            <ul>
+                <li>One brute force test that throws lots of garbage input (preferably with a fuzzer).</li>
+                <li>Tests for each conditional branch (e.g., one for each possible error code in our C++ UTF-8 validation example).</li>
+                <li>Tests for each bug I thought might reoccur.</li>
+            </ul>
+            <p>While it’s not the most exciting topic, a significant portion of my time was spent writing tests and debugging. For each architecture, we might have tried a dozen plausible solutions. If only the brute force test failed, it was usually some obscure edge case I had forgotten by the time I reached the third plausible solution. Writing good tests is the programming equivalent of “A pint of sweat will save a gallon of blood.”</p>
+            <p>Debuggers are not ergonomic for SIMD, making tests even more crucial.</p>
+        
+            <h2>Step #4: Writing Benchmarks</h2>
+            <p>This step is self-explanatory but not trivial. There are many potential pitfalls. The <a href="https://github.com/dotnet/BenchmarkDotNet">BenchmarkDotNet homepage</a> provides a good overview:</p>
+            <blockquote>
+                <p>“Reliable benchmarks always include a lot of boilerplate code. Let's think about what you should do in a typical case. First, you should perform a pilot experiment and determine the best number of method invocations. Next, you should execute several warm-up iterations and ensure that your benchmark achieved a steady state. After that, you should execute the main iterations and calculate some basic statistics. If you calculate some values in your benchmark, you should use them somehow to prevent dead code elimination. If you use loops, you should care about the effect of loop unrolling on your results (which may depend on the processor architecture). Once you get results, you should check for special properties of the obtained performance distribution, like multimodality or extremely high outliers. You should also evaluate the overhead of your infrastructure and deduct it from your results. If you want to test several environments, you should perform the measurements in each of them and manually aggregate the results. If you write this code from scratch, it's easy to make a mistake and spoil your measurements. Note that it's a shortened version of the full checklist that you should follow during benchmarking: there are a lot of additional hidden pitfalls that should be handled appropriately.”</p>
+            </blockquote>
+            <p>Thankfully, I did not have to write much of that boilerplate code. The benchmarking infrastructure was already in place for simdutf. I only needed to extend and modify it. For C#, we used the BenchmarkDotNet library.</p>
+        
+            <h2>Step #5: Writing SIMD Code</h2>
+            <p>Step #5 deserves a section of its own and is the subject of my next article.</p>
+                </article>
+
+
+        <hr>
+    <article>
+
+<section id="footnotes">
+  <p id="footnote1">
+    [1]  This is actually more common than it seems. i.e. no one bothered to check whether a very popular Python data science library <a href="https://github.com/scipy/scipy/issues/19454">was actually SIMD optimized</a> until last year:   
+  </p>
+</section>
+</article>
+
+
+        
+    <footer>
+        <p>&copy; 2024 Nick Nuon</p>
+    </footer>
+
+</body>
+</html>

@@ -1,1 +1,90 @@
-Hello World
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A year and a half doing SIMD programming</title>
+    <link rel="stylesheet" href="styles.css">
+  
+    <!-- Include Highlight.js CSS theme -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
+    
+    <!-- Include Highlight.js JavaScript library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  
+    <!-- Optional: Load additional language support -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/go.min.js"></script>
+  
+    <!-- Initialize Highlight.js -->
+    <script>hljs.highlightAll();</script>
+</head>
+<body>
+
+    <header>
+        <h1>Nick Nuon's bag of tricks (title a WIP)</h1>
+        <nav>
+            <!-- Navigation links can be added here in the future -->
+        </nav>
+    </header>
+
+    <section>
+        <article>
+            <h2>About</h2>
+            <p>For the past year and a half, I've worked alongside Daniel Lemire on three projects:</p>
+            <br>
+            <ul>
+                <li>Adding <a href="https://github.com/simdutf/simdutf/releases/tag/v4.0.0">Latin1 support to simdutf</a>(up to 38 times faster than the ICU library)</li>
+                <li><a href="https://github.com/simdutf/SimdUnicode">SimdUnicode</a>: Porting simdutf's UTF8 validation routines to C# (up to 2.3x times faster than the equivalent .NET 9 SIMD-accelerated counterpart, currently under consideration for adoption into .NET. Further <a href="https://github.com/modularml/mojo/blob/nightly/stdlib/src/utils/_utf8_validation.mojo">ported to mojo</a> by Chris Lattner's team )</li>
+                <img src="img/SIMDUnicode_results.png" alt="">
+                <li><a rel="stylesheet" href="https://github.com/simdutf/SimdBase64">SimdBase64</a>: Porting simdutf's Base64 validation routines to C# (up to 10 times faster than its .NET runtime SIMD-accelerated counterpart, currently <a href="https://github.com/dotnet/runtime/issues/107816">slated for adoption</a> into .NET 10)</li>
+                <img src="img/SIMDUnicode_results.png" alt="">
+            </ul>
+            <br>
+            <p>This website has a few goals:</p>
+            <br>
+            <ul>
+                <li> To document how I was able to contribute to the above projects. 
+                </li>
+                <li>To serve as a tutorial, of sort.
+                    I  prefer shorter articles with an overarching narrative: they tend to stick a lot easier.
+                    It ended up being a series of vignettes and lessons learned rather than a tutorial but this is how I did it. 
+                </li>
+                <li>To serve as a portfolio for job search purposes.This site will serve as a summary of major milestones but also as <a href="http://" target="_blank" rel="noopener noreferrer"></a> repository of expository essays. 
+                </li>
+                <li>To serve as a set of notes I can refer back to as needed</li>
+                
+            </ul>
+            <p></p>
+
+            <br>
+            <p><em>Please note this is a draft and a work in progress: all mistakes are my own.</em></p>
+
+        </article>
+
+        <article>
+            <h3>Table of content</h3>
+            <ul>
+                <li><a href="whatencoding.html">What is character encoding? And why should I care?</a></li>
+                <li><a href="gameplan.html">How to write open source SIMD code used by millions of people: a gameplan</a></li>
+                <li><a href="learn_cpp_30_days.html">How to learn C++ SIMD programming in 30-ish days:What book publishers are afraid to tell you</a></li>
+                <li><a href="tweaking_SIMD.html">Tweaking SIMD code to make it super fast</a></li>
+                <li><a href="did_rust_help.html">Does learning Rust in 5 days help you learn C++ SIMD programming in 30-ish days?</a>  </li>
+                <li><a href="SIMD_across_architectures.html">Writing SIMD code across architecture...</a></li>
+                <li><a href="SIMD_across_languages.html">...and languages (from C++ to C#)</a> </li>
+                <li><a href="conclusion.html">Conclusion or the importance of socializing</a></li>
+            </ul>
+
+            <h4>Appendix</h4>
+            <ul>
+                <li>Relevant links, tools and resources</li>
+            </ul>
+
+        </article>
+    </section>
+
+    <footer>
+        <p>&copy; 2024 Nick Nuon</p>
+    </footer>
+
+</body>
+</html>
