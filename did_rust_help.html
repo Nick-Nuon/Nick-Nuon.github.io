@@ -44,7 +44,7 @@
                 <p>"A language that doesn't affect the way you think about programming, is not worth knowing."</p>
             </blockquote>
         
-            <p>I could not hope to know every detail about C++ or C#, but I could learn from the wisdom of others (and in particular language designers). What sold me on Rust was that I had no experience doing manual memory management, and I just didn’t want to deal with things like heisenbugs. C++ is famous for its litany of footguns and I was hoping that some of those lessons learned would rub off on me. Ironically, the biggest landmine in this case wasn’t related to memory management.</p>
+            <p>I could not hope to know every detail about C++ or C#, but I could learn from the wisdom of others (and in particular language designers). What sold me on Rust was that I had no experience doing manual memory management. C++ is famous for its litany of footguns and I was hoping that some of lessons learned from Rust would rub off on me. Ironically, the biggest landmine in this case wasn’t related to memory management.</p>
         
             <p>The algorithms didn’t make use of multithreading. I did still get buffer overflows and segfaults, but they weren’t the hardest thing to debug. I always knew at least the ballpark of the culprit because there were so few memory allocations. Typically, the main routine was buggy and it would overflow the memory allocated for the tests.</p>
         
@@ -55,7 +55,7 @@
             <h2>Debugging and Spaghetti Code</h2>
             <p>I’ll relate a time where I had written spaghetti code. In this instance, I had to explain code I had written over a Zoom call, which happened only once throughout my stay.</p>
         
-            <p>I resume my adventures from the last article. Recap: I had ported the C++ code into C#, but my job was not quite done yet. The runtime function did not only validate UTF-8 units but also changed two extra values by reference.</p>
+            <p>The time is April 2024,I had ported the C++ code for UTF-8 validation into C#, but my job was not quite done yet. The runtime function did not only validate UTF-8 units but also changed two extra values by reference.</p>
         
             <p>The first counted the number of 2-byte UTF-8 units, and the second counted the number of 3- and 4-byte UTF-8 units and then multiplied it by two.</p>
         

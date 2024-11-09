@@ -35,6 +35,10 @@ section {
     margin: 20px 0;
 }
 
+code {
+    margin: 20px 0;
+}
+
 article {
     background: #fff;
     padding: 20px;
@@ -98,7 +102,7 @@ img {
     max-width: 100%;
     height: auto;
     display: block;
-    margin: 0 auto;
+    margin: 15px auto;
   }
   
 

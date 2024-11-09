@@ -31,10 +31,10 @@
         <article>
             <h1>How Do You Tweak SIMD Code for Performance?</h1>
             <p><strong>SIMD</strong> stands for <em>Single Instruction Multiple Data</em>. As the name suggests, unlike scalar assembly instructions that act on one element at a time, SIMD instructions act on several elements simultaneously.</p>
-            <p>The advantage is that with the right problem and done correctly, it can significantly speed up the code. However, while SIMD instructions are simple enough to understand, optimizing them is anything but straightforward.</p>
+            <p>The advantage is that with the right problem and done correctly, it can significantly speed up the code as it skips many a conditional check. However,  optimizing SIMD instructions is anything but straightforward.</p>
         
             <h2>Where to Start?</h2>
-            <p>When writing this document, I struggled to find common, easy rule of thumb. The truth is, most of my work has been ad hoc iterative changes involving extensive trial and error. Our philosophy was that it is better to try 10 different plausible solutions than to have one perfect one.</p>
+            <p>When writing this document, I struggled to find easy rules of thumb. The truth is, most of my work has been ad hoc iterative changes involving extensive trial and error. Our philosophy was that it is better to try 10 different plausible solutions than to have one perfect one.</p>
             <p>In many ways, it’s like finding an optimal way to speedrun a video game: balancing a myriad of factors, each with its advantages and disadvantages. Some issues only came up once during the projects. Additionally, the compiler might not always output assembly code that resembles what you wrote.</p>
         
             <h2>First SIMD Task Example</h2>

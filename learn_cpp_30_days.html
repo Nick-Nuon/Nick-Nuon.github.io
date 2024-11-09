@@ -36,13 +36,13 @@
                 “[I have to warn you], be mindful that I do very advanced programming. You will be challenged (massively) if you work with me. I am a nice person, but I don't do easy work. :-) You have to be ready to be confused and puzzled, and to work hard.”
             </blockquote>
             <p>According to Peter Norvig, it takes <a href="https://norvig.com/21-days.html">10 years to become a master programmer.</a></p>
-            <p>Well, I did not have 10 years.  I had never written a line of code with other people before, nor anything beyond 1400 LOC in high level langages but that was hardly a head start. I also did not know that the word 'register' could refer to something else than the cash register at the supermarket.</p>
+            <p>Well, I did not have 10 years.  I had never written a line of code with other people before, nor anything beyond 1400 LOC in high level langages but that was hardly a head start.</p>
             <p>I had one month with respect to C++, a language which I knew little about while at the same time doing renovations. While there wasn’t a definite timetable for our C# projects, I felt it was in bad taste to spend one whole month learning C# on the university’s dime, so I watched a few YouTube videos and dove right in.</p>
-            <p>Thanksfully, I knew that my job would be almost exclusively about software performance so that narrowed things down quite a bit.This is not a perfect solution—it is arguably a montage—but this is how I did it:</p>
+            <p>I did however had one thing going for me : very specific goals.This is not a perfect solution but this is how I did it. </p>
         
             <h2>Day 0</h2>
-            <p>C++ and C# are nearly 39 and 24 years old respectively: trying to learn everything would have been a fool’s errand. I had to understand what was happening under the hood and extrapolate from that on the fly.</p>
-            <p>From previous experience, I knew ChatGPT was good for things like syntax (“What’s the C++ intrinsic for a shift left by X bytes?”), features (“Does C# have equivalents to templates?”), so I decided to not focus too much on either or try to memorize them.</p>
+            <p>First, I had to decide what to cut as learning everything under the sun would have been a fool`s errand.</p>
+            <p>From previous experience, I knew ChatGPT was good for things like syntax (“What’s the C++ intrinsic for a shift left by X bytes?”), features (“Does C# have equivalents to templates?”) and features so I decided to not focus too much on either or try to memorize them.</p>
             <p>At first, I could not understand the papers nor the code, but I could tell that it did not use any multithreading, so I cut that from my training schedule. Template metaprogramming sounded really complicated, so I just hoped it wasn’t going to be on the test (good call: we used templates but only for simple uses).</p>
             <p>I did not understand any of the terminology related to hardware, so I set out to understand how a computer works.</p>
         
@@ -370,8 +370,8 @@
 
 
             <p>It’s basically a one-to-one port of the C++ code. It works, but it was slower than the runtime, and I could not figure out why.</p>
-            <p>Daniel came up with this <a href="https://github.com/simdutf/SimdUnicode/pull/13/files#diff-2441d7d0038aa052f725db50e78df8154b92f71854aba61e021394e85f24a2bb">solution</a></p>
-            <p>In a nutshell, in the original C++ code, there was no issue with taking small pieces of code and putting them into functions, e.g.,</p>
+            <p>Daniel came up with this <a href="https://github.com/simdutf/SimdUnicode/pull/13/files#diff-2441d7d0038aa052f725db50e78df8154b92f71854aba61e021394e85f24a2bb">solution</a>.</p>
+            <p>In a nutshell, in the original C++ code, there was no issue with taking small pieces of code and putting them into functions like so:</p>
         
             <pre><code class="language-cpp">
         public static Vector256&lt;byte&gt; Prev1(this Vector256&lt;byte&gt; current, Vector256&lt;byte&gt; prev)
