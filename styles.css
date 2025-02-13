@@ -68,6 +68,10 @@ footer {
     color: #666;
 }
 
+blockquote footer {
+    text-align: right;
+  }
+
 /* Example container styling */
 div {
     width: 300px;              
@@ -109,7 +113,6 @@ img {
 ul, ol {
     padding-left: 50px; /* Increase this value to add more space */
     margin-bottom: 15px; /* Space below the header */
-
 }
 
 /* ul li, ol li {
